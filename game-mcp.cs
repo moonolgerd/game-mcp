@@ -80,11 +80,12 @@ public static class GameDiscoveryTools
             // var registryGames = await DiscoverRegistryGames();
             // games.AddRange(registryGames);
 
-            // Remove duplicates and sort
+            // Remove duplicates and sort by playtime (descending), then by name
             var uniqueGames = games
                 .GroupBy(g => Path.GetFullPath(g.InstallPath.TrimEnd('/', '\\')).ToLowerInvariant())
                 .Select(group => group.First())
-                .OrderBy(g => g.Name)
+                .OrderByDescending(g => g.PlayTimeHours ?? 0)
+                .ThenBy(g => g.Name)
                 .ToList();
 
             var result = new GameDiscoveryResult
@@ -98,7 +99,9 @@ public static class GameDiscoveryTools
                     install_path = g.InstallPath,
                     executable = g.Executable,
                     install_date = g.InstallDate?.ToString("yyyy-MM-dd"),
-                    size_mb = g.SizeMB
+                    size_mb = g.SizeMB,
+                    last_played = g.LastPlayed?.ToString("yyyy-MM-dd"),
+                    play_time_hours = g.PlayTimeHours
                 }).ToList()
             };
 
@@ -290,6 +293,10 @@ public static class GameDiscoveryTools
                     // Only add Steam games that have executables and aren't launchers
                     if (!string.IsNullOrEmpty(executable) && !IsLauncherApplication(gameName))
                     {
+                        // Try to find the Steam app ID from .acf files
+                        var appId = await FindSteamAppId(libraryPath, gameName);
+                        var playtime = await GetSteamPlaytimeAsync(appId ?? "");
+                        
                         games.Add(new Game
                         {
                             Name = gameName,
@@ -297,7 +304,9 @@ public static class GameDiscoveryTools
                             InstallPath = gameFolder,
                             Executable = executable,
                             InstallDate = gameInfo.CreationTime,
-                            SizeMB = await GetDirectorySizeAsync(gameFolder) / (1024 * 1024)
+                            SizeMB = await GetDirectorySizeAsync(gameFolder) / (1024 * 1024),
+                            PlayTimeHours = playtime.Item1,
+                            LastPlayed = playtime.Item2
                         });
                     }
                 }
@@ -310,6 +319,70 @@ public static class GameDiscoveryTools
         }
 
         return games;
+    }
+
+    private static async Task<string?> FindSteamAppId(string libraryPath, string gameName)
+    {
+        try
+        {
+            // Get Steam path to find all library paths
+            var steamPath = GetSteamPath();
+            if (string.IsNullOrEmpty(steamPath))
+                return null;
+
+            // Collect all Steam library paths
+            var allLibraryPaths = new List<string> { Path.Combine(steamPath, "steamapps") };
+            
+            // Read library folders from libraryfolders.vdf
+            var libraryFoldersPath = Path.Combine(steamPath, "steamapps", "libraryfolders.vdf");
+            if (File.Exists(libraryFoldersPath))
+            {
+                var libraryContent = await File.ReadAllTextAsync(libraryFoldersPath);
+                var pathMatches = Regex.Matches(libraryContent, @"""path""\s*""([^""]+)""");
+                foreach (Match match in pathMatches)
+                {
+                    var path = match.Groups[1].Value.Replace(@"\\", @"\");
+                    var steamAppsFolder = Path.Combine(path, "steamapps");
+                    if (Directory.Exists(steamAppsFolder))
+                        allLibraryPaths.Add(steamAppsFolder);
+                }
+            }
+
+            // Look for .acf files in all Steam library directories
+            foreach (var libPath in allLibraryPaths)
+            {
+                if (!Directory.Exists(libPath))
+                    continue;
+
+                var acfFiles = Directory.GetFiles(libPath, "appmanifest_*.acf");
+                foreach (var acfFile in acfFiles)
+                {
+                    var content = await File.ReadAllTextAsync(acfFile);
+                    
+                    // Parse the name from ACF file
+                    var nameMatch = Regex.Match(content, @"""name""\s*""([^""]+)""", RegexOptions.IgnoreCase);
+                    var installDirMatch = Regex.Match(content, @"""installdir""\s*""([^""]+)""", RegexOptions.IgnoreCase);
+                    
+                    if ((nameMatch.Success && nameMatch.Groups[1].Value.Equals(gameName, StringComparison.OrdinalIgnoreCase)) ||
+                        (installDirMatch.Success && installDirMatch.Groups[1].Value.Equals(gameName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        // Extract app ID from filename
+                        var fileName = Path.GetFileNameWithoutExtension(acfFile);
+                        var appIdMatch = Regex.Match(fileName, @"appmanifest_(\d+)");
+                        if (appIdMatch.Success)
+                        {
+                            return appIdMatch.Groups[1].Value;
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error finding Steam app ID for {gameName}: {ex.Message}");
+        }
+        
+        return null;
     }
 
     private static async Task<List<Game>> DiscoverEpicGames()
@@ -344,6 +417,7 @@ public static class GameDiscoveryTools
                         {
                             var executable = FindGameExecutable(installPath, gameName);
                             var gameInfo = new DirectoryInfo(installPath);
+                            var playtime = await GetEpicPlaytimeAsync(gameName, installPath);
                             
                             games.Add(new Game
                             {
@@ -352,7 +426,9 @@ public static class GameDiscoveryTools
                                 InstallPath = installPath,
                                 Executable = executable,
                                 InstallDate = gameInfo.CreationTime,
-                                SizeMB = await GetDirectorySizeAsync(installPath) / (1024 * 1024)
+                                SizeMB = await GetDirectorySizeAsync(installPath) / (1024 * 1024),
+                                PlayTimeHours = playtime.Item1,
+                                LastPlayed = playtime.Item2
                             });
                         }
                     }
@@ -402,6 +478,7 @@ public static class GameDiscoveryTools
 
                         var gameInfo = new DirectoryInfo(path);
                         
+                        var playtime = await GetGogPlaytimeAsync(gameName, path);
                         games.Add(new Game
                         {
                             Name = gameName,
@@ -409,7 +486,9 @@ public static class GameDiscoveryTools
                             InstallPath = path,
                             Executable = executable,
                             InstallDate = gameInfo.CreationTime,
-                            SizeMB = await GetDirectorySizeAsync(path) / (1024 * 1024)
+                            SizeMB = await GetDirectorySizeAsync(path) / (1024 * 1024),
+                            PlayTimeHours = playtime.Item1,
+                            LastPlayed = playtime.Item2
                         });
                     }
                 }
@@ -1341,6 +1420,243 @@ public static class GameDiscoveryTools
         {
             return 0;
         }
+    }
+
+    private static async Task<(double?, DateTime?)> GetSteamPlaytimeAsync(string appId)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(appId))
+                return (null, null);
+
+            var steamPath = GetSteamPath();
+            if (string.IsNullOrEmpty(steamPath))
+                return (null, null);
+
+            // First, try to find the current user's Steam ID from loginusers.vdf
+            var loginUsersFile = Path.Combine(steamPath, "config", "loginusers.vdf");
+            var currentUserId = await GetCurrentSteamUserId(loginUsersFile);
+
+            var userdataPath = Path.Combine(steamPath, "userdata");
+            if (!Directory.Exists(userdataPath))
+                return (null, null);
+
+            // Look for user directories (either the specific user or all users)
+            var userDirs = Directory.GetDirectories(userdataPath);
+            
+            // Prioritize the current user's directory if we found their ID
+            if (!string.IsNullOrEmpty(currentUserId))
+            {
+                var currentUserDir = Path.Combine(userdataPath, currentUserId);
+                if (Directory.Exists(currentUserDir))
+                {
+                    var result = await TryGetPlaytimeFromUserDir(currentUserDir, appId);
+                    if (result.Item1.HasValue || result.Item2.HasValue)
+                        return result;
+                }
+            }
+
+            // If we didn't find data for the current user, try all user directories
+            foreach (var userDir in userDirs)
+            {
+                var result = await TryGetPlaytimeFromUserDir(userDir, appId);
+                if (result.Item1.HasValue || result.Item2.HasValue)
+                    return result;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error getting Steam playtime for {appId}: {ex.Message}");
+        }
+
+        return (null, null);
+    }
+
+    private static async Task<string?> GetCurrentSteamUserId(string loginUsersFile)
+    {
+        try
+        {
+            if (!File.Exists(loginUsersFile))
+                return null;
+
+            var content = await File.ReadAllTextAsync(loginUsersFile);
+            // Look for the most recent login (MostRecent = "1")
+            var userMatch = Regex.Match(content, @"""(\d+)""\s*\{[^}]*""MostRecent""\s*""1""", RegexOptions.Singleline);
+            return userMatch.Success ? userMatch.Groups[1].Value : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static async Task<(double?, DateTime?)> TryGetPlaytimeFromUserDir(string userDir, string appId)
+    {
+        try
+        {
+            double? playtimeHours = null;
+            DateTime? lastPlayed = null;
+
+            // Method 1: Check localconfig.vdf for playtime and last played
+            var localConfigFile = Path.Combine(userDir, "config", "localconfig.vdf");
+            if (File.Exists(localConfigFile))
+            {
+                var content = await File.ReadAllTextAsync(localConfigFile);
+                
+                // Look for the app section in Software\Valve\Steam\Apps\{appId}
+                var appSectionPattern = $@"""{appId}""\s*\{{([^}}]*)}}";
+                var appMatch = Regex.Match(content, appSectionPattern, RegexOptions.Singleline);
+                
+                if (appMatch.Success)
+                {
+                    var appSection = appMatch.Groups[1].Value;
+                    
+                    // Extract playtime (in minutes)
+                    var playtimeMatch = Regex.Match(appSection, @"""Playtime""\s*""(\d+)""");
+                    if (playtimeMatch.Success)
+                    {
+                        var totalMinutes = int.Parse(playtimeMatch.Groups[1].Value);
+                        if (totalMinutes > 0)
+                            playtimeHours = totalMinutes / 60.0;
+                    }
+                    
+                    // Extract last played timestamp
+                    var lastPlayedMatch = Regex.Match(appSection, @"""LastPlayed""\s*""(\d+)""");
+                    if (lastPlayedMatch.Success)
+                    {
+                        var timestamp = long.Parse(lastPlayedMatch.Groups[1].Value);
+                        if (timestamp > 0)
+                            lastPlayed = DateTimeOffset.FromUnixTimeSeconds(timestamp).DateTime;
+                    }
+                }
+            }
+
+            // Method 2: Also check sharedconfig.vdf as a fallback
+            if (!playtimeHours.HasValue)
+            {
+                var sharedConfigFile = Path.Combine(userDir, "7", "remote", "sharedconfig.vdf");
+                if (File.Exists(sharedConfigFile))
+                {
+                    var content = await File.ReadAllTextAsync(sharedConfigFile);
+                    var playtimeMatch = Regex.Match(content, $@"""{appId}""\s*\{{\s*""Playtime2wks""\s*""(\d+)""\s*""Playtime""\s*""(\d+)""");
+                    if (playtimeMatch.Success)
+                    {
+                        var totalMinutes = int.Parse(playtimeMatch.Groups[2].Value);
+                        if (totalMinutes > 0)
+                            playtimeHours = totalMinutes / 60.0;
+                    }
+                }
+            }
+
+            return (playtimeHours, lastPlayed);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error reading Steam user data from {userDir}: {ex.Message}");
+            return (null, null);
+        }
+    }
+
+    private static async Task<(double?, DateTime?)> GetEpicPlaytimeAsync(string gameName, string installPath)
+    {
+        try
+        {
+            // Epic Games stores playtime in different locations depending on the game
+            // Check for common save game locations that might contain playtime data
+            var epicDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "EpicGamesLauncher", "Saved");
+            if (Directory.Exists(epicDataPath))
+            {
+                var configPath = Path.Combine(epicDataPath, "Config", "Windows", "GameUserSettings.ini");
+                if (File.Exists(configPath))
+                {
+                    var content = await File.ReadAllTextAsync(configPath);
+                    // Epic doesn't store playtime in easily accessible format, return null for now
+                }
+            }
+
+            // Check executable last modified time as a proxy for last played
+            if (!string.IsNullOrEmpty(installPath) && Directory.Exists(installPath))
+            {
+                var exeFiles = Directory.GetFiles(installPath, "*.exe", SearchOption.AllDirectories);
+                var mainExe = exeFiles.FirstOrDefault(f => !Path.GetFileName(f).ToLower().Contains("unins"));
+                if (mainExe != null)
+                {
+                    var lastWrite = File.GetLastWriteTime(mainExe);
+                    var installDate = Directory.GetCreationTime(installPath);
+                    // If exe was modified after install, it might indicate recent play
+                    if (lastWrite > installDate.AddDays(1))
+                    {
+                        return (null, lastWrite);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error getting Epic playtime for {gameName}: {ex.Message}");
+        }
+
+        return (null, null);
+    }
+
+    private static Task<(double?, DateTime?)> GetGogPlaytimeAsync(string gameName, string installPath)
+    {
+        try
+        {
+            // GOG Galaxy stores playtime in database files
+            var gogDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GOG.com", "Galaxy");
+            if (Directory.Exists(gogDataPath))
+            {
+                // GOG uses SQLite databases which would require additional dependencies to read
+                // For now, return null - could be enhanced with SQLite support
+            }
+
+            // Use similar logic as Epic - check for recent executable modifications
+            if (!string.IsNullOrEmpty(installPath) && Directory.Exists(installPath))
+            {
+                var exeFiles = Directory.GetFiles(installPath, "*.exe", SearchOption.AllDirectories);
+                var mainExe = exeFiles.FirstOrDefault(f => !Path.GetFileName(f).ToLower().Contains("unins"));
+                if (mainExe != null)
+                {
+                    var lastAccess = File.GetLastAccessTime(mainExe);
+                    var installDate = Directory.GetCreationTime(installPath);
+                    if (lastAccess > installDate.AddDays(1))
+                    {
+                        return Task.FromResult<(double?, DateTime?)>((null, lastAccess));
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error getting GOG playtime for {gameName}: {ex.Message}");
+        }
+
+        return Task.FromResult<(double?, DateTime?)>((null, null));
+    }
+
+    private static Task<(double?, DateTime?)> GetRegistryPlaytimeAsync(string gameName, string installPath)
+    {
+        try
+        {
+            // Some games store playtime in registry
+            // This is a generic fallback method
+            using var key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\" + gameName.Replace(" ", ""));
+            if (key != null)
+            {
+                var playtime = key.GetValue("PlayTime");
+                if (playtime != null && double.TryParse(playtime.ToString(), out var hours))
+                {
+                    return Task.FromResult<(double?, DateTime?)>((hours, null));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error getting registry playtime for {gameName}: {ex.Message}");
+        }
+
+        return Task.FromResult<(double?, DateTime?)>((null, null));
     }
 }
 
