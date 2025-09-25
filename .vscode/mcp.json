@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "game-discovery": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": ["run", "D:\\Repos\\game-mcp\\game-mcp.cs"]
+    }
+  }
+}
