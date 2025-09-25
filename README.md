@@ -19,6 +19,7 @@ A Model Context Protocol (MCP) server that discovers and manages installed games
   - Game name and platform
   - Installation path and executable location
   - Installation date and size
+  - **Playtime data**: Hours played and last played date (where available)
   - Platform-specific metadata
 
 - **MCP Tools Available**:
@@ -98,10 +99,31 @@ The server uses multiple discovery methods:
    - Parses AppxManifest.xml files for application information
    - Filters for gaming applications
 
-5. **Registry Programs**: 
+5. **Ubisoft Connect Games**:
+   - Queries Windows registry for Ubisoft launcher installation path
+   - Scans registry uninstall entries for Ubisoft-published games
+   - Searches common Ubisoft Connect game directories
+   - **Playtime Collection**: Attempts to extract playtime data from:
+     - Ubisoft Connect database files and configuration files in `%LocalAppData%\Ubisoft Game Launcher`
+     - Game save files and logs within installation directories
+     - Executable modification times as fallback for last played detection
+
+6. **Registry Programs**: 
    - Scans Windows uninstall registry entries
    - Uses heuristics to identify game-like applications
    - Filters out system utilities and non-gaming software
+
+### Playtime Collection Support
+
+The server attempts to collect playtime data (hours played and last played date) for the following platforms:
+
+- **Steam**: Reads playtime from user configuration files (`localconfig.vdf`, `sharedconfig.vdf`)
+- **Epic Games**: Uses executable modification times as proxy for activity
+- **GOG Galaxy**: Checks executable access times (full database support would require SQLite dependencies)
+- **Ubisoft Connect**: Scans launcher configuration files and game save data for playtime information
+- **Other platforms**: Uses fallback methods like executable modification times
+
+Note: Playtime data availability depends on platform-specific storage formats and may not be available for all games.
 
 ## Error Handling
 
