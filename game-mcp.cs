@@ -888,6 +888,7 @@ public static class GameDiscoveryTools
                             {
                                 var executable = FindGameExecutable(installLocation, displayName);
                                 var gameInfo = new DirectoryInfo(installLocation);
+                                var playtime = await GetUbisoftPlaytimeAsync(displayName, installLocation);
                                 
                                 games.Add(new Game
                                 {
@@ -896,7 +897,9 @@ public static class GameDiscoveryTools
                                     InstallPath = installLocation,
                                     Executable = executable,
                                     InstallDate = gameInfo.CreationTime,
-                                    SizeMB = await GetDirectorySizeAsync(installLocation) / (1024 * 1024)
+                                    SizeMB = await GetDirectorySizeAsync(installLocation) / (1024 * 1024),
+                                    PlayTimeHours = playtime.Item1,
+                                    LastPlayed = playtime.Item2
                                 });
                             }
                             
@@ -932,6 +935,8 @@ public static class GameDiscoveryTools
                         if (!IsNonGameDirectory(gameName) && !IsLauncherApplication(gameName) &&
                             !games.Any(g => g.InstallPath.Equals(gameDir, StringComparison.OrdinalIgnoreCase)))
                         {
+                            var playtime = await GetUbisoftPlaytimeAsync(gameName, gameDir);
+                            
                             games.Add(new Game
                             {
                                 Name = gameName,
@@ -939,7 +944,9 @@ public static class GameDiscoveryTools
                                 InstallPath = gameDir,
                                 Executable = executable,
                                 InstallDate = gameInfo.CreationTime,
-                                SizeMB = await GetDirectorySizeAsync(gameDir) / (1024 * 1024)
+                                SizeMB = await GetDirectorySizeAsync(gameDir) / (1024 * 1024),
+                                PlayTimeHours = playtime.Item1,
+                                LastPlayed = playtime.Item2
                             });
                         }
                     }
@@ -1633,6 +1640,172 @@ public static class GameDiscoveryTools
         }
 
         return Task.FromResult<(double?, DateTime?)>((null, null));
+    }
+
+    private static async Task<(double?, DateTime?)> GetUbisoftPlaytimeAsync(string gameName, string installPath)
+    {
+        try
+        {
+            // Ubisoft Connect stores playtime and game statistics in multiple locations:
+            // 1. Local AppData for the launcher
+            // 2. Ubisoft Connect database files
+            // 3. Game save files and logs
+
+            var ubisoftDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ubisoft Game Launcher");
+            if (!Directory.Exists(ubisoftDataPath))
+            {
+                // Try alternative path
+                ubisoftDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ubisoft");
+            }
+
+            DateTime? lastPlayed = null;
+            double? playtimeHours = null;
+
+            // Method 1: Check Ubisoft Connect database files for playtime
+            if (Directory.Exists(ubisoftDataPath))
+            {
+                try
+                {
+                    // Look for database files that might contain playtime data
+                    var dbFiles = Directory.GetFiles(ubisoftDataPath, "*.db", SearchOption.AllDirectories);
+                    var logFiles = Directory.GetFiles(ubisoftDataPath, "*.log", SearchOption.AllDirectories);
+                    
+                    // Ubisoft Connect uses SQLite databases, but without external dependencies we can't read them directly
+                    // Look for text-based log files or configuration files instead
+                    var configFiles = Directory.GetFiles(ubisoftDataPath, "*.json", SearchOption.AllDirectories)
+                        .Concat(Directory.GetFiles(ubisoftDataPath, "*.cfg", SearchOption.AllDirectories))
+                        .Concat(Directory.GetFiles(ubisoftDataPath, "*.ini", SearchOption.AllDirectories));
+
+                    foreach (var configFile in configFiles)
+                    {
+                        try
+                        {
+                            var content = await File.ReadAllTextAsync(configFile);
+                            // Look for game name and potential playtime data in JSON or config format
+                            if (content.Contains(gameName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                // Try to extract playtime from various possible formats
+                                var playtimePattern = @"(?i)(?:playtime|time_played|total_time)[\s""':=]*(\d+)";
+                                var playtimeMatch = Regex.Match(content, playtimePattern);
+                                if (playtimeMatch.Success && double.TryParse(playtimeMatch.Groups[1].Value, out var time))
+                                {
+                                    // Time could be in seconds, minutes, or hours - heuristic determination
+                                    if (time > 10000) // Likely seconds
+                                        playtimeHours = time / 3600.0;
+                                    else if (time > 600) // Likely minutes
+                                        playtimeHours = time / 60.0;
+                                    else // Likely hours
+                                        playtimeHours = time;
+                                }
+
+                                // Try to extract last played date
+                                var datePattern = @"(?i)(?:last_played|lastplayed|date)[\s""':=]*[""']?(\d{4}-\d{2}-\d{2}|\d{10,13})[""']?";
+                                var dateMatch = Regex.Match(content, datePattern);
+                                if (dateMatch.Success)
+                                {
+                                    var dateStr = dateMatch.Groups[1].Value;
+                                    if (long.TryParse(dateStr, out var timestamp) && timestamp > 1000000000)
+                                    {
+                                        // Unix timestamp
+                                        if (timestamp > 10000000000) // Milliseconds
+                                            timestamp /= 1000;
+                                        lastPlayed = DateTimeOffset.FromUnixTimeSeconds(timestamp).DateTime;
+                                    }
+                                    else if (DateTime.TryParse(dateStr, out var date))
+                                    {
+                                        lastPlayed = date;
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine($"Error reading Ubisoft config file {configFile}: {ex.Message}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error scanning Ubisoft data directory: {ex.Message}");
+                }
+            }
+
+            // Method 2: Check game installation directory for save files or logs
+            if (!playtimeHours.HasValue && !string.IsNullOrEmpty(installPath) && Directory.Exists(installPath))
+            {
+                try
+                {
+                    // Look for save files or log files that might contain playtime
+                    var saveFiles = Directory.GetFiles(installPath, "*.sav", SearchOption.AllDirectories)
+                        .Concat(Directory.GetFiles(installPath, "*.save", SearchOption.AllDirectories))
+                        .Concat(Directory.GetFiles(installPath, "*.log", SearchOption.AllDirectories))
+                        .Concat(Directory.GetFiles(installPath, "*.txt", SearchOption.AllDirectories));
+
+                    foreach (var saveFile in saveFiles.Take(10)) // Limit to first 10 files to avoid performance issues
+                    {
+                        try
+                        {
+                            if (new FileInfo(saveFile).Length > 1024 * 1024) // Skip files larger than 1MB
+                                continue;
+
+                            var content = await File.ReadAllTextAsync(saveFile);
+                            var playtimePattern = @"(?i)(?:playtime|time_played|total_time|hours_played)[\s""':=]*(\d+\.?\d*)";
+                            var match = Regex.Match(content, playtimePattern);
+                            if (match.Success && double.TryParse(match.Groups[1].Value, out var time))
+                            {
+                                if (time > 10000) // Likely seconds
+                                    playtimeHours = time / 3600.0;
+                                else if (time > 600) // Likely minutes
+                                    playtimeHours = time / 60.0;
+                                else // Likely hours
+                                    playtimeHours = time;
+                                break;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine($"Error reading save file {saveFile}: {ex.Message}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error scanning game directory for saves: {ex.Message}");
+                }
+            }
+
+            // Method 3: Fallback - check executable modification times as a proxy for activity
+            if (!lastPlayed.HasValue && !string.IsNullOrEmpty(installPath) && Directory.Exists(installPath))
+            {
+                try
+                {
+                    var exeFiles = Directory.GetFiles(installPath, "*.exe", SearchOption.AllDirectories);
+                    var mainExe = exeFiles.FirstOrDefault(f => !Path.GetFileName(f).ToLower().Contains("unins") && 
+                                                              !Path.GetFileName(f).ToLower().Contains("setup"));
+                    if (mainExe != null)
+                    {
+                        var lastAccess = File.GetLastAccessTime(mainExe);
+                        var installDate = Directory.GetCreationTime(installPath);
+                        if (lastAccess > installDate.AddDays(1))
+                        {
+                            lastPlayed = lastAccess;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error checking executable times: {ex.Message}");
+                }
+            }
+
+            return (playtimeHours, lastPlayed);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error getting Ubisoft playtime for {gameName}: {ex.Message}");
+        }
+
+        return (null, null);
     }
 
     private static Task<(double?, DateTime?)> GetRegistryPlaytimeAsync(string gameName, string installPath)
