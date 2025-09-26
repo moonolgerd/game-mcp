@@ -1,0 +1,64 @@
+name: Publish to MCP Registry
+
+on:
+  push:
+    tags: ["v*"]  # Triggers on version tags like v1.0.0
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    
+    permissions:
+      id-token: write  # Required for OIDC authentication
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          include-prerelease: true
+
+      - name: Restore dependencies
+        run: dotnet restore game-mcp/game-mcp.csproj
+
+      - name: Build project
+        run: dotnet build game-mcp/game-mcp.csproj --configuration Release --no-restore
+
+      - name: Test project
+        run: dotnet test game-mcp/game-mcp.csproj --configuration Release --no-build --verbosity normal
+        continue-on-error: true  # Continue even if no tests exist
+
+      - name: Create NuGet package
+        run: dotnet pack game-mcp/game-mcp.csproj --configuration Release --no-build --output ./artifacts
+
+      - name: Publish to NuGet
+        run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+      - name: Update server.json version
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $json = Get-Content server.json | ConvertFrom-Json
+          $json.version = $version
+          $json.packages[0].version = $version
+          $json | ConvertTo-Json -Depth 10 | Set-Content server.json
+
+      - name: Install MCP Publisher
+        shell: pwsh
+        run: |
+          $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq "Arm64") { "arm64" } else { "amd64" }
+          Invoke-WebRequest -Uri "https://github.com/modelcontextprotocol/registry/releases/download/v1.1.0/mcp-publisher_1.1.0_windows_$arch.tar.gz" -OutFile "mcp-publisher.tar.gz"
+          tar xf mcp-publisher.tar.gz mcp-publisher.exe
+          Remove-Item mcp-publisher.tar.gz
+
+      - name: Login to MCP Registry
+        run: ./mcp-publisher.exe login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher.exe publish

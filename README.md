@@ -1,5 +1,7 @@
 # Game Discovery MCP Server
 
+<!-- mcp-name: io.github.moonolgerd/game-mcp -->
+
 A Model Context Protocol (MCP) server that discovers and manages installed games on Windows PC from various platforms including Steam, Epic Games, GOG, Windows Store/Xbox, and other installed programs.
 
 ## Features
