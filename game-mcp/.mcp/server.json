@@ -1,0 +1,21 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schemas/draft/2025-07-09/server.json",
+  "name": "io.github.moonolgerd/game-mcp",
+  "description": "Discovers and manages installed games on Windows from Steam, Epic, GOG, Xbox, and other platforms.",
+  "repository": {
+    "url": "https://github.com/moonolgerd/game-mcp",
+    "source": "github"
+  },
+   "version_detail": {
+    "version": "1.0.3"
+  },
+  "packages": [
+    {
+      "registry_name": "nuget",
+      "name": "GameMcpServer",
+      "version": "1.0.3",
+      "package_arguments": [],
+      "environment_variables": []
+    }
+  ]
+}

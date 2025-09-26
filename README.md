@@ -32,17 +32,19 @@ A Model Context Protocol (MCP) server that discovers and manages installed games
 
 - .NET 10.0 or later
 - Windows operating system
-- Visual Studio Code (optional, for development)
 
 ## Usage with VS Code
 
-### For local development:
 ```json
 {
   "servers": {
-    "game-discovery": {
-      "command": "dotnet",
-      "args": ["run", "path/to/game-mcp.cs"]
+    "McpServer1": {
+      "type": "stdio",
+      "command": "dnx",
+      "args": [
+        "GameMcpServer@1.0.3",
+        "--yes"
+      ]
     }
   }
 }
