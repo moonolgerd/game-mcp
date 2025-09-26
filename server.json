@@ -7,13 +7,13 @@
     "url": "https://github.com/moonolgerd/game-mcp",
     "source": "github"
   },
-  "version": "1.0.3",
+  "version": "1.0.4",
   "packages": [
     {
       "registryType": "nuget",
       "registryBaseUrl": "https://api.nuget.org",
       "identifier": "GameMcpServer",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "runtimeHint": "dnx",
       "transport": {
         "type": "stdio"

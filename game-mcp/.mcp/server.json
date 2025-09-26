@@ -7,13 +7,13 @@
     "source": "github"
   },
    "version_detail": {
-    "version": "1.0.3"
+    "version": "1.0.4"
   },
   "packages": [
     {
       "registry_name": "nuget",
       "name": "GameMcpServer",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "package_arguments": [],
       "environment_variables": []
     }

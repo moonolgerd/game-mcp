@@ -2,6 +2,8 @@
 
 <!-- mcp-name: io.github.moonolgerd/game-mcp -->
 
+[![NuGet](https://img.shields.io/nuget/v/GameMcpServer.svg)](https://www.nuget.org/packages/GameMcpServer/)
+
 A Model Context Protocol (MCP) server that discovers and manages installed games on Windows PC from various platforms including Steam, Epic Games, GOG, Windows Store/Xbox, and other installed programs.
 
 ## Features
@@ -42,7 +44,7 @@ A Model Context Protocol (MCP) server that discovers and manages installed games
       "type": "stdio",
       "command": "dnx",
       "args": [
-        "GameMcpServer@1.0.3",
+        "GameMcpServer@1.0.4",
         "--yes"
       ]
     }
