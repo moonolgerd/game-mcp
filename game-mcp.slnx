@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".github/copilot-instructions.md" />
+    <File Path=".vscode/mcp.json" />
+    <File Path="game-mcp.cs" />
+  </Folder>
+  <Project Path="game-mcp/game-mcp.csproj" />
+</Solution>
