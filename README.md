@@ -35,6 +35,32 @@ A Model Context Protocol (MCP) server that discovers and manages installed games
 - .NET 10.0 or later
 - Windows operating system
 
+## Local LLM Support for Agentic Features
+
+This MCP server works with any MCP-compatible client. For **agentic** (autonomous tool-calling) capabilities, the following local LLMs are supported:
+
+### Fully Supported Local LLMs
+- **Claude via API** (Anthropic) - Full MCP and agentic support through Claude Desktop or API
+- **Ollama** with function-calling models:
+  - `llama3.1:70b` and larger - Native function calling support
+  - `mistral-nemo` - Built-in tool use capabilities
+  - `qwen2.5:32b` and larger - Strong function calling performance
+- **LM Studio** - Supports MCP servers with compatible models
+- **Jan.ai** - MCP integration available
+
+### Configuration Notes
+- **Agentic features** require models that support function/tool calling
+- Smaller models (<7B parameters) may struggle with complex tool orchestration
+- For best results with game discovery, use models with 32B+ parameters
+- MCP protocol is client-agnostic - any MCP client can connect to this server
+
+### GitHub Copilot Integration
+- GitHub Copilot Workspace supports MCP servers for enhanced context
+- Local LLM support in VS Code requires MCP-compatible extensions
+- See `.vscode/mcp.json` for configuration example
+
+**📖 For detailed information, see [Local LLM Support Guide](.github/LOCAL_LLM_SUPPORT.md)**
+
 ## Usage with VS Code
 
 ```json
