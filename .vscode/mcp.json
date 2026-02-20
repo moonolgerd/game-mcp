@@ -3,7 +3,7 @@
     "GameMcpServer": {
       "type": "stdio",
       "command": "dnx",
-      "args": ["GameMcpServer@1.0.4", "--yes"],
+      "args": ["GameMcpServer@1.0.5", "--yes"],
       "env": {}
     }
   }

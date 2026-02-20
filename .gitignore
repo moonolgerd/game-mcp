@@ -363,3 +363,4 @@ server.schema.json
 # Temporary files
 *.tmp
 *.temp
+vscode-extension/*.vsix

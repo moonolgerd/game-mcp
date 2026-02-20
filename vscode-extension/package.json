@@ -1,0 +1,58 @@
+{
+  "name": "game-mcp-vscode",
+  "displayName": "Game Discovery MCP",
+  "description": "Discover and manage installed games via MCP tools for GitHub Copilot",
+  "version": "1.0.8",
+  "publisher": "moonolgerd",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moonolgerd/game-mcp"
+  },
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.101.0"
+  },
+  "categories": [
+    "Chat",
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "mcp",
+    "games",
+    "steam",
+    "epic",
+    "gog",
+    "xbox",
+    "copilot"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "game-mcp.server",
+        "label": "Game Discovery MCP"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build-server && npm run package",
+    "build-server": "dotnet publish ../game-mcp/game-mcp.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o bin/win-x64",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "lint": "eslint src"
+  },
+  "devDependencies": {
+    "@types/node": "^22.x",
+    "@types/vscode": "^1.101.0",
+    "@typescript-eslint/eslint-plugin": "^8.x",
+    "@typescript-eslint/parser": "^8.x",
+    "eslint": "^9.x",
+    "ts-loader": "^9.x",
+    "typescript": "^5.x",
+    "webpack": "^5.x",
+    "webpack-cli": "^5.x"
+  }
+}

@@ -45,7 +45,7 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ github.ref_name }}".TrimStart('v')
-          $json = Get-Content server.json | ConvertFrom-Json
+          $json = Get-Content server.json -Raw | ConvertFrom-Json
           $json.version = $version
           $json.packages[0].version = $version
           $json | ConvertTo-Json -Depth 10 | Set-Content server.json
@@ -63,3 +63,40 @@ jobs:
 
       - name: Publish to MCP Registry
         run: ./mcp-publisher.exe publish
+
+  publish-vscode:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          include-prerelease: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: Sync version from tag into package.json
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $path = "vscode-extension/package.json"
+          $json = Get-Content $path -Raw | ConvertFrom-Json
+          $json.version = $version
+          $json | ConvertTo-Json -Depth 10 | Set-Content $path
+
+      - name: Install npm dependencies
+        working-directory: vscode-extension
+        run: npm ci
+
+      - name: Publish VS Code extension
+        working-directory: vscode-extension
+        run: npx @vscode/vsce publish --no-git-tag-version
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
