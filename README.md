@@ -40,11 +40,11 @@ A Model Context Protocol (MCP) server that discovers and manages installed games
 ```json
 {
   "servers": {
-    "McpServer1": {
+    "GameMcpServer": {
       "type": "stdio",
       "command": "dnx",
       "args": [
-        "GameMcpServer@1.0.4",
+        "GameMcpServer@1.0.5",
         "--yes"
       ]
     }
