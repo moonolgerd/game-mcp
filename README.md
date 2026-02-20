@@ -44,7 +44,7 @@ A Model Context Protocol (MCP) server that discovers and manages installed games
       "type": "stdio",
       "command": "dnx",
       "args": [
-        "GameMcpServer@1.0.5",
+        "GameMcpServer@1.0.6",
         "--yes"
       ]
     }

@@ -12,7 +12,7 @@
     
     <!-- NuGet Package Properties -->
     <PackageId>GameMcpServer</PackageId>
-    <PackageVersion>1.0.5</PackageVersion>
+    <PackageVersion>1.0.6</PackageVersion>
     <Authors>moonolgerd</Authors>
     <Description>A Model Context Protocol server that discovers and manages installed games on Windows PC from various platforms including Steam, Epic Games, GOG, Windows Store/Xbox, and other installed programs.</Description>
     <PackageProjectUrl>https://github.com/moonolgerd/game-mcp</PackageProjectUrl>
